@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Interactive Coordinate Triangle</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			padding: 20px;
+			background-color: #f0f0f0;
+		}
+
+		#canvas {
+			border: 2px solid #333;
+			background-color: white;
+			cursor: crosshair;
+		}
+
+		.instructions {
+			margin: 20px 0;
+			text-align: center;
+			max-width: 600px;
+		}
+
+
+
+		.controls {
+			margin: 10px 0;
+		}
+
+		button {
+			padding: 8px 16px;
+			margin: 0 5px;
+			border: none;
+			background-color: #4CAF50;
+			color: white;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background-color: #45a049;
+		}
+
+		button:disabled {
+			background-color: #cccccc;
+			cursor: not-allowed;
+		}
+	</style>
+</head>
+<body>
+	<h1>Interactive Coordinate Triangle</h1>
+
+	<div class="instructions">
+		<p><strong>Instructions:</strong></p>
+		<p>Click on any grid intersection (integer coordinates) to place up to 3 points. Once placed, you can drag the points to move them to different integer coordinates. The triangle will update automatically.</p>
+	</div>
+
+	<div class="controls">
+		<button onclick="clearPoints()">Clear All Points</button>
+	</div>
+
+	<svg id="canvas" width="640" height="640"></svg>
+
+	<script>
+		const canvas = document.getElementById('canvas');
+		const canvasSize = 640;
+		const gridSize = 20; // Size of each grid cell (32 pixels per unit)
+		const centerX = canvasSize / 2;
+		const centerY = canvasSize / 2;
+
+		let points = [];
+		let draggedPoint = null;
+		let dragOffset = { x: 0, y: 0 };
+
+		// Convert screen coordinates to grid coordinates
+		function screenToGrid(screenX, screenY) {
+			const rect = canvas.getBoundingClientRect();
+			const x = screenX - rect.left;
+			const y = screenY - rect.top;
+
+			const gridX = Math.round((x - centerX) / gridSize);
+			const gridY = Math.round((centerY - y) / gridSize);
+
+			// Clamp to grid bounds
+			return {
+				x: Math.max(-10, Math.min(10, gridX)),
+				y: Math.max(-10, Math.min(10, gridY))
+			};
+		}
+
+		// Convert grid coordinates to screen coordinates
+		function gridToScreen(gridX, gridY) {
+			return {
+				x: centerX + gridX * gridSize,
+				y: centerY - gridY * gridSize
+			};
+		}
+
+		// Draw the coordinate grid
+		function drawGrid() {
+			canvas.innerHTML = '';
+
+			// Create SVG elements
+			const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+			canvas.appendChild(defs);
+
+			// Grid lines
+			const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			gridGroup.setAttribute('stroke', '#ddd');
+			gridGroup.setAttribute('stroke-width', '1');
+
+			// Vertical lines
+			for (let i = -10; i <= 10; i++) {
+				const x = centerX + i * gridSize;
+				const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+				line.setAttribute('x1', x);
+				line.setAttribute('y1', 0);
+				line.setAttribute('x2', x);
+				line.setAttribute('y2', canvasSize);
+				gridGroup.appendChild(line);
+			}
+
+			// Horizontal lines
+			for (let i = -10; i <= 10; i++) {
+				const y = centerY - i * gridSize;
+				const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+				line.setAttribute('x1', 0);
+				line.setAttribute('y1', y);
+				line.setAttribute('x2', canvasSize);
+				line.setAttribute('y2', y);
+				gridGroup.appendChild(line);
+			}
+
+			canvas.appendChild(gridGroup);
+
+			// Axes
+			const axesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			axesGroup.setAttribute('stroke', '#333');
+			axesGroup.setAttribute('stroke-width', '2');
+
+			// X-axis
+			const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+			xAxis.setAttribute('x1', 0);
+			xAxis.setAttribute('y1', centerY);
+			xAxis.setAttribute('x2', canvasSize);
+			xAxis.setAttribute('y2', centerY);
+			axesGroup.appendChild(xAxis);
+
+			// Y-axis
+			const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+			yAxis.setAttribute('x1', centerX);
+			yAxis.setAttribute('y1', 0);
+			yAxis.setAttribute('x2', centerX);
+			yAxis.setAttribute('y2', canvasSize);
+			axesGroup.appendChild(yAxis);
+
+			canvas.appendChild(axesGroup);
+
+			// Grid intersection points
+			const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			pointsGroup.setAttribute('fill', '#ccc');
+
+			for (let x = -10; x <= 10; x++) {
+				for (let y = -10; y <= 10; y++) {
+					const screenPos = gridToScreen(x, y);
+					const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+					point.setAttribute('cx', screenPos.x);
+					point.setAttribute('cy', screenPos.y);
+					point.setAttribute('r', '2');
+					pointsGroup.appendChild(point);
+				}
+			}
+
+			canvas.appendChild(pointsGroup);
+
+			// Labels
+			const labelsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			labelsGroup.setAttribute('fill', '#666');
+			labelsGroup.setAttribute('font-family', 'Arial, sans-serif');
+			labelsGroup.setAttribute('font-size', '12');
+			labelsGroup.setAttribute('text-anchor', 'middle');
+
+			// X-axis labels
+			for (let i = -10; i <= 10; i += 2) {
+				if (i === 0) continue;
+				const x = centerX + i * gridSize;
+				const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+				label.setAttribute('x', x);
+				label.setAttribute('y', centerY + 20);
+				label.textContent = i.toString();
+				labelsGroup.appendChild(label);
+			}
+
+			// Y-axis labels
+			for (let i = -10; i <= 10; i += 2) {
+				if (i === 0) continue;
+				const y = centerY - i * gridSize;
+				const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+				label.setAttribute('x', centerX - 20);
+				label.setAttribute('y', y + 4);
+				label.textContent = i.toString();
+				labelsGroup.appendChild(label);
+			}
+
+			canvas.appendChild(labelsGroup);
+		}
+
+		// Draw triangle and points
+		function drawTriangleAndPoints() {
+			// Remove existing triangle and points
+			const existingTriangle = canvas.querySelector('#triangle');
+			const existingPoints = canvas.querySelector('#userPoints');
+			if (existingTriangle) existingTriangle.remove();
+			if (existingPoints) existingPoints.remove();
+
+			// Calculate angles if we have 3 points
+			let angles = [null, null, null];
+			let isCollinear = false;
+
+			if (points.length === 3) {
+				// Draw triangle
+				const triangle = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+				triangle.setAttribute('id', 'triangle');
+
+				const screenPoints = points.map(p => gridToScreen(p.x, p.y));
+				const pointsStr = screenPoints.map(p => `${p.x},${p.y}`).join(' ');
+				triangle.setAttribute('points', pointsStr);
+				triangle.setAttribute('fill', 'rgba(74, 144, 226, 0.3)');
+				triangle.setAttribute('stroke', '#4a90e2');
+				triangle.setAttribute('stroke-width', '2');
+
+				canvas.appendChild(triangle);
+
+				// Calculate angles
+				const [p1, p2, p3] = points;
+				const area = Math.abs(
+					(p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2
+				);
+
+				if (area > 0.001) { // Not collinear
+					angles[0] = calculateAngle(p2, p1, p3); // Angle at P1
+					angles[1] = calculateAngle(p1, p2, p3); // Angle at P2
+					angles[2] = calculateAngle(p1, p3, p2); // Angle at P3
+				} else {
+					isCollinear = true;
+				}
+			}
+
+			// Draw user points
+			const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			pointsGroup.setAttribute('id', 'userPoints');
+
+			points.forEach((point, index) => {
+				const screenPos = gridToScreen(point.x, point.y);
+
+				// Point circle
+				const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+				circle.setAttribute('cx', screenPos.x);
+				circle.setAttribute('cy', screenPos.y);
+				circle.setAttribute('r', '8');
+				circle.setAttribute('fill', '#e74c3c');
+				circle.setAttribute('stroke', 'white');
+				circle.setAttribute('stroke-width', '2');
+				circle.setAttribute('cursor', 'move');
+				circle.setAttribute('data-point-index', index);
+
+				// Point coordinate label
+				const coordLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+				coordLabel.setAttribute('x', screenPos.x);
+				coordLabel.setAttribute('y', screenPos.y - 15);
+				coordLabel.setAttribute('fill', '#333');
+				coordLabel.setAttribute('font-family', 'Arial, sans-serif');
+				coordLabel.setAttribute('font-size', '16');
+				coordLabel.setAttribute('font-weight', 'bold');
+				coordLabel.setAttribute('text-anchor', 'middle');
+				coordLabel.textContent = `P${index + 1}(${point.x},${point.y})`;
+				coordLabel.setAttribute('pointer-events', 'none');
+
+				// Angle label (if we have 3 points and they form a valid triangle)
+				if (points.length === 3 && !isCollinear && angles[index] !== null) {
+					const angleLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+
+					// Position angle label to avoid overlap with coordinate label
+					let offsetX = 0;
+					let offsetY = 0;
+
+					// Determine position based on point index to spread them out
+					switch (index) {
+						case 0: // P1 - place to the right
+							offsetX = 25;
+							offsetY = 5;
+							break;
+						case 1: // P2 - place to the left
+							offsetX = -25;
+							offsetY = 5;
+							break;
+						case 2: // P3 - place below
+							offsetX = 0;
+							offsetY = 25;
+							break;
+					}
+
+					angleLabel.setAttribute('x', screenPos.x + offsetX);
+					angleLabel.setAttribute('y', screenPos.y + offsetY);
+					angleLabel.setAttribute('fill', '#2c3e50');
+					angleLabel.setAttribute('font-family', 'Arial, sans-serif');
+					angleLabel.setAttribute('font-size', '15');
+					angleLabel.setAttribute('font-weight', 'bold');
+					angleLabel.setAttribute('text-anchor', 'middle');
+					angleLabel.textContent = `∠${angles[index].toFixed(1)}°`;
+					angleLabel.setAttribute('pointer-events', 'none');
+
+					// Add a subtle background for better readability
+					const angleBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+					const textBBox = angleLabel.getBBox?.() || { width: 50, height: 16, x: screenPos.x + offsetX - 25, y: screenPos.y + offsetY - 8 };
+
+					angleBg.setAttribute('x', screenPos.x + offsetX - 22);
+					angleBg.setAttribute('y', screenPos.y + offsetY - 10);
+					angleBg.setAttribute('width', '44');
+					angleBg.setAttribute('height', '18');
+					angleBg.setAttribute('fill', 'rgba(255, 255, 255, 0.8)');
+					angleBg.setAttribute('stroke', 'rgba(44, 62, 80, 0.3)');
+					angleBg.setAttribute('stroke-width', '1');
+					angleBg.setAttribute('rx', '3');
+					angleBg.setAttribute('pointer-events', 'none');
+
+					pointsGroup.appendChild(angleBg);
+					pointsGroup.appendChild(angleLabel);
+				} else if (points.length === 3 && isCollinear) {
+					// Show collinear message for the middle point
+					if (index === 1) {
+						const collinearLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+						collinearLabel.setAttribute('x', screenPos.x);
+						collinearLabel.setAttribute('y', screenPos.y + 25);
+						collinearLabel.setAttribute('fill', '#e67e22');
+						collinearLabel.setAttribute('font-family', 'Arial, sans-serif');
+						collinearLabel.setAttribute('font-size', '10');
+						collinearLabel.setAttribute('font-weight', 'bold');
+						collinearLabel.setAttribute('text-anchor', 'middle');
+						collinearLabel.textContent = 'Collinear';
+						collinearLabel.setAttribute('pointer-events', 'none');
+
+						pointsGroup.appendChild(collinearLabel);
+					}
+				}
+
+				pointsGroup.appendChild(circle);
+				pointsGroup.appendChild(coordLabel);
+			});
+
+			canvas.appendChild(pointsGroup);
+		}
+
+		// Calculate angle between two vectors using dot product
+		function calculateAngle(p1, p2, p3) {
+			// Calculate vectors from p2 to p1 and p2 to p3
+			const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
+			const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+
+			// Calculate dot product
+			const dotProduct = v1.x * v2.x + v1.y * v2.y;
+
+			// Calculate magnitudes
+			const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+			const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+			// Handle degenerate cases
+			if (mag1 === 0 || mag2 === 0) return 0;
+
+			// Calculate angle in radians, then convert to degrees
+			const cosAngle = Math.max(-1, Math.min(1, dotProduct / (mag1 * mag2))); // Clamp to [-1, 1]
+			const angleRadians = Math.acos(cosAngle);
+			const angleDegrees = angleRadians * (180 / Math.PI);
+
+			return angleDegrees;
+		}
+
+
+
+		// Handle canvas click
+		function handleCanvasClick(event) {
+			if (draggedPoint !== null) return; // Don't add points while dragging
+
+			const targetElement = event.target;
+
+			// Check if clicked on a point
+			if (targetElement.tagName === 'circle' && targetElement.hasAttribute('data-point-index')) {
+				return; // Let drag handling take care of this
+			}
+
+			// Add new point if we have less than 3
+			if (points.length < 3) {
+				const gridPos = screenToGrid(event.clientX, event.clientY);
+
+				// Check if point already exists at this position
+				const exists = points.some(p => p.x === gridPos.x && p.y === gridPos.y);
+				if (!exists) {
+					points.push(gridPos);
+					drawTriangleAndPoints();
+				}
+			}
+		}
+
+		// Handle mouse down for dragging
+		function handleMouseDown(event) {
+			const targetElement = event.target;
+
+			if (targetElement.tagName === 'circle' && targetElement.hasAttribute('data-point-index')) {
+				const pointIndex = parseInt(targetElement.getAttribute('data-point-index'));
+				draggedPoint = pointIndex;
+
+				const screenPos = gridToScreen(points[pointIndex].x, points[pointIndex].y);
+				const rect = canvas.getBoundingClientRect();
+				dragOffset.x = (event.clientX - rect.left) - screenPos.x;
+				dragOffset.y = (event.clientY - rect.top) - screenPos.y;
+
+				canvas.style.cursor = 'grabbing';
+				event.preventDefault();
+			}
+		}
+
+		// Handle mouse move for dragging
+		function handleMouseMove(event) {
+			if (draggedPoint !== null) {
+				const rect = canvas.getBoundingClientRect();
+				const mouseX = event.clientX - rect.left - dragOffset.x;
+				const mouseY = event.clientY - rect.top - dragOffset.y;
+
+				const gridPos = screenToGrid(event.clientX - dragOffset.x, event.clientY - dragOffset.y);
+
+				// Check if position is different and not occupied by another point
+				const exists = points.some((p, index) =>
+					index !== draggedPoint && p.x === gridPos.x && p.y === gridPos.y
+				);
+
+				if (!exists && (points[draggedPoint].x !== gridPos.x || points[draggedPoint].y !== gridPos.y)) {
+					points[draggedPoint] = gridPos;
+					drawTriangleAndPoints();
+				}
+			}
+		}
+
+		// Handle mouse up
+		function handleMouseUp(event) {
+			if (draggedPoint !== null) {
+				draggedPoint = null;
+				canvas.style.cursor = 'crosshair';
+			}
+		}
+
+		// Clear all points
+		function clearPoints() {
+			points = [];
+			drawTriangleAndPoints();
+		}
+
+
+
+		// Event listeners
+		canvas.addEventListener('click', handleCanvasClick);
+		canvas.addEventListener('mousedown', handleMouseDown);
+		canvas.addEventListener('mousemove', handleMouseMove);
+		canvas.addEventListener('mouseup', handleMouseUp);
+		canvas.addEventListener('mouseleave', handleMouseUp);
+
+		// Prevent context menu on right click
+		canvas.addEventListener('contextmenu', event => event.preventDefault());
+
+		// Initialize
+		drawGrid();
+	</script>
+</body>
+</html>
