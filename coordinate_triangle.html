@@ -10,21 +10,24 @@
 			display: flex;
 			flex-direction: column;
 			align-items: center;
-			padding: 20px;
+			padding: 10px;
 			background-color: #f0f0f0;
+			margin: 0;
 		}
 
 		#canvas {
 			border: 2px solid #333;
 			background-color: white;
 			cursor: crosshair;
+			height: 90vh;
+			width: 90vh;
 		}
 
 		.main-content {
 			display: flex;
 			align-items: flex-start;
 			gap: 30px;
-			margin-top: 20px;
+			margin-top: 10px;
 		}
 
 		.sidebar {
@@ -69,6 +72,78 @@
 			font-size: 18px;
 		}
 
+		.triangle-info {
+			background-color: white;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #ddd;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+		}
+
+		.triangle-info h3 {
+			margin-top: 0;
+			color: #333;
+			font-size: 18px;
+		}
+
+		.triangle-info p {
+			margin: 10px 0;
+			line-height: 1.5;
+			color: #555;
+			font-size: 14px;
+		}
+
+		.triangle-type-result {
+			font-size: 16px;
+			font-weight: bold;
+			padding: 10px;
+			border-radius: 6px;
+			text-align: center;
+			margin: 10px 0;
+		}
+
+		.acute {
+			background-color: #e8f5e8;
+			color: #2e7d32;
+			border: 2px solid #4caf50;
+		}
+
+		.right {
+			background-color: #fff3e0;
+			color: #ef6c00;
+			border: 2px solid #ff9800;
+		}
+
+		.obtuse {
+			background-color: #fce4ec;
+			color: #c2185b;
+			border: 2px solid #e91e63;
+		}
+
+		.collinear {
+			background-color: #f3e5f5;
+			color: #7b1fa2;
+			border: 2px solid #9c27b0;
+		}
+
+		.equilateral {
+			background-color: #e3f2fd;
+			color: #0d47a1;
+			border: 2px solid #2196f3;
+		}
+
+		.isosceles {
+			background-color: #f1f8e9;
+			color: #33691e;
+			border: 2px solid #8bc34a;
+		}
+
+		.scalene {
+			background-color: #fff8e1;
+			color: #e65100;
+			border: 2px solid #ffc107;
+		}
+
 		button {
 			padding: 12px 20px;
 			border: none;
@@ -90,7 +165,7 @@
 			cursor: not-allowed;
 		}
 
-		@media (max-width: 1024px) {
+		@media (max-width: 1200px) {
 			.main-content {
 				flex-direction: column;
 				align-items: center;
@@ -98,16 +173,21 @@
 
 			.sidebar {
 				width: 100%;
-				max-width: 640px;
+				max-width: 90vh;
+			}
+
+			#canvas {
+				width: 90vw;
+				height: 90vw;
+				max-width: 90vh;
+				max-height: 90vh;
 			}
 		}
 	</style>
 </head>
 <body>
-	<h1>Interactive Coordinate Triangle</h1>
-
 	<div class="main-content">
-		<svg id="canvas" width="640" height="640"></svg>
+		<svg id="canvas" viewBox="0 0 640 640" preserveAspectRatio="xMidYMid meet"></svg>
 
 		<div class="sidebar">
 			<div class="instructions">
@@ -120,6 +200,13 @@
 			<div class="controls">
 				<h3>Controls</h3>
 				<button onclick="clearPoints()">Clear All Points</button>
+			</div>
+
+			<div class="triangle-info">
+				<h3>Triangle Info</h3>
+				<div id="triangle-type">
+					<p>Click 3 points to form a triangle</p>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -138,8 +225,11 @@
 		// Convert screen coordinates to grid coordinates
 		function screenToGrid(screenX, screenY) {
 			const rect = canvas.getBoundingClientRect();
-			const x = screenX - rect.left;
-			const y = screenY - rect.top;
+			const scaleX = canvasSize / rect.width;
+			const scaleY = canvasSize / rect.height;
+
+			const x = (screenX - rect.left) * scaleX;
+			const y = (screenY - rect.top) * scaleY;
 
 			const gridX = Math.round((x - centerX) / gridSize);
 			const gridY = Math.round((centerY - y) / gridSize);
@@ -411,6 +501,9 @@
 			});
 
 			canvas.appendChild(pointsGroup);
+
+			// Update triangle info
+			updateTriangleInfo(angles, isCollinear);
 		}
 
 		// Calculate angle between two vectors using dot product
@@ -435,6 +528,128 @@
 			const angleDegrees = angleRadians * (180 / Math.PI);
 
 			return angleDegrees;
+		}
+
+		// Calculate side lengths of triangle
+		function calculateSideLengths(points) {
+			const [p1, p2, p3] = points;
+
+			// Calculate distance between each pair of points
+			const side1 = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)); // P1 to P2
+			const side2 = Math.sqrt(Math.pow(p3.x - p2.x, 2) + Math.pow(p3.y - p2.y, 2)); // P2 to P3
+			const side3 = Math.sqrt(Math.pow(p1.x - p3.x, 2) + Math.pow(p1.y - p3.y, 2)); // P3 to P1
+
+			return [side1, side2, side3];
+		}
+
+		// Determine triangle type based on angles
+		function getTriangleType(angles) {
+			const rightAngleTolerance = 0.1; // Small tolerance for floating point precision
+
+			// Check for right triangle (any angle close to 90 degrees)
+			for (let angle of angles) {
+				if (Math.abs(angle - 90) <= rightAngleTolerance) {
+					return {
+						type: 'right',
+						description: 'Right Triangle',
+						explanation: 'Has one angle equal to 90°'
+					};
+				}
+			}
+
+			// Check for obtuse triangle (any angle greater than 90 degrees)
+			for (let angle of angles) {
+				if (angle > 90 + rightAngleTolerance) {
+					return {
+						type: 'obtuse',
+						description: 'Obtuse Triangle',
+						explanation: 'Has one angle greater than 90°'
+					};
+				}
+			}
+
+			// If no right or obtuse angles, it's acute
+			return {
+				type: 'acute',
+				description: 'Acute Triangle',
+				explanation: 'All angles are less than 90°'
+			};
+		}
+
+		// Determine triangle type based on side lengths
+		function getTriangleTypeBySides(points) {
+			const sides = calculateSideLengths(points);
+			const [side1, side2, side3] = sides.sort((a, b) => a - b); // Sort for easier comparison
+			const tolerance = 0.001; // Small tolerance for floating point precision
+
+			// Check for equilateral triangle (all sides equal)
+			if (Math.abs(side1 - side2) <= tolerance && Math.abs(side2 - side3) <= tolerance) {
+				return {
+					type: 'equilateral',
+					description: 'Equilateral Triangle',
+					explanation: 'All three sides are equal',
+					sideLengths: sides.map(s => s.toFixed(2))
+				};
+			}
+
+			// Check for isosceles triangle (two sides equal)
+			const originalSides = calculateSideLengths(points);
+			const [s1, s2, s3] = originalSides;
+
+			if (Math.abs(s1 - s2) <= tolerance || Math.abs(s2 - s3) <= tolerance || Math.abs(s1 - s3) <= tolerance) {
+				return {
+					type: 'isosceles',
+					description: 'Isosceles Triangle',
+					explanation: 'Two sides are equal',
+					sideLengths: originalSides.map(s => s.toFixed(2))
+				};
+			}
+
+			// If no equal sides, it's scalene
+			return {
+				type: 'scalene',
+				description: 'Scalene Triangle',
+				explanation: 'All sides are different lengths',
+				sideLengths: originalSides.map(s => s.toFixed(2))
+			};
+		}
+
+		// Update triangle info box
+		function updateTriangleInfo(angles, isCollinear) {
+			const triangleTypeDiv = document.getElementById('triangle-type');
+
+			if (points.length < 3) {
+				triangleTypeDiv.innerHTML = '<p>Click 3 points to form a triangle</p>';
+			} else if (isCollinear) {
+				triangleTypeDiv.innerHTML = `
+					<div class="triangle-type-result collinear">
+						<div>Collinear Points</div>
+						<div style="font-size: 16px; font-weight: normal; margin-top: 5px;">
+							The three points lie on the same line
+						</div>
+					</div>
+				`;
+			} else {
+				const triangleInfoByAngles = getTriangleType(angles);
+				const triangleInfoBySides = getTriangleTypeBySides(points);
+
+				triangleTypeDiv.innerHTML = `
+					<div class="triangle-type-result ${triangleInfoByAngles.type}">
+						<div>${triangleInfoByAngles.description}</div>
+						<div style="font-size: 16px; font-weight: normal; margin-top: 5px;">
+							${triangleInfoByAngles.explanation}
+						</div>
+					</div>
+					<div class="triangle-type-result ${triangleInfoBySides.type}" style="margin-top: 10px;">
+						<div>${triangleInfoBySides.description}</div>
+						<div style="font-size: 16px; font-weight: normal; margin-top: 5px;">
+							${triangleInfoBySides.explanation}
+						</div>
+					</div>
+					<p><strong>Angles:</strong> ${angles.map(a => a.toFixed(1) + '°').join(', ')}</p>
+					<p><strong>Side lengths:</strong> ${triangleInfoBySides.sideLengths.join(', ')}</p>
+				`;
+			}
 		}
 
 		// Handle canvas click
@@ -469,11 +684,6 @@
 				const pointIndex = parseInt(targetElement.getAttribute('data-point-index'));
 				draggedPoint = pointIndex;
 
-				const screenPos = gridToScreen(points[pointIndex].x, points[pointIndex].y);
-				const rect = canvas.getBoundingClientRect();
-				dragOffset.x = (event.clientX - rect.left) - screenPos.x;
-				dragOffset.y = (event.clientY - rect.top) - screenPos.y;
-
 				canvas.style.cursor = 'grabbing';
 				event.preventDefault();
 			}
@@ -482,11 +692,8 @@
 		// Handle mouse move for dragging
 		function handleMouseMove(event) {
 			if (draggedPoint !== null) {
-				const rect = canvas.getBoundingClientRect();
-				const mouseX = event.clientX - rect.left - dragOffset.x;
-				const mouseY = event.clientY - rect.top - dragOffset.y;
-
-				const gridPos = screenToGrid(event.clientX - dragOffset.x, event.clientY - dragOffset.y);
+				// Simply use the current mouse position to determine grid position
+				const gridPos = screenToGrid(event.clientX, event.clientY);
 
 				// Check if position is different and not occupied by another point
 				const exists = points.some((p, index) =>
